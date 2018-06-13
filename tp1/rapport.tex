@@ -1,0 +1,77 @@
+\documentclass{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+
+
+\title{Travail pratique \#1 - IFT-2245}
+\author{Charbel Kassis et Dorin Diaconu}
+
+\begin{document}
+
+\maketitle
+
+\newpage
+
+\part*{CH : UN SHELL POUR LES HÉLVÈTES}
+
+\section*{Introduction}
+Ce document présente le rapport du travail effectué pour la conception et l’implantation d’un shell pour pouvoir exécuter des commandes système. Le but du travail était de se familiariser avec la programmation système dans un système d’exploitation de style POSIX et de parfaire la connaissance de Python.
+
+Dans ce rapport, nous présentons les sujets suivants :
+\begin{itemize}
+\item	Les problèmes rencontrés.
+\item	Les surprises.
+\item	Les choix qu’on a dû faire.
+\item	Les options qu’on a rejetées.
+\item	Etc.
+\end{itemize}
+
+Le programme est fourni sous forme de fichier ch.py qui fonctionne en version Python 3.
+\section*{Description du travail}
+Une grande partie du temps, a était consacré à la compréhension de fonctionnement des commandes POSIX. Une autre grande partie de temps était dédiée à l’implémentation et l’approfondissement des connaissances de programmer en Python.
+
+Beaucoup de tests ont était fait et des mesures de préventions des erreurs ont était prises par conséquent.
+\section*{Courte description de fonctionnement du code}
+\subsection*{L’expansion d’arguments}
+Dans le cas du $echo *$, par exemple, la console affiche le contenu du répertoire courant, dans le cas de $ls *$, elle affiche le contenu du répertoire courant et de tous les sous-répertoires. De plus, pour 2 ou plus d’astérisques à côté ça donne le résultat comme pour un seul astérisque, mais s’ils sont séparés par un espace alors le résultat d’affichage est doublé. 
+
+En général, l’astérisque est remplacé par le nom de répertoires et des fichiers qui se trouvent dans le répertoire courant. Dans le code, la méthode responsable de l’expansion d’arguments s’appelle $expansion()$. La méthode-clé pour l’implantation est $os.listdir()$.
+\subsection*{Les redirections}
+Sont implémentées les redirections à gauche $<$ et à droite $>$. Elles modifient l'i/o qui est le shell par défaut. Dans le code, la méthode responsable de la redirection s’appelle $redirect()$. La méthode-clé pour l’implantation est $os.dup2()$.
+\subsection*{Les pipes}
+Dans le code, la méthode responsable pour travailler avec les pipes est la méthode $pipeline()$. On y a utilisé les méthodes-clés $os.fork()$, $os.pipe()$ et $os.dup2()$. D’abord, une pipe est créée, la partie de lecture de la pipe est fermée et la partie d’écriture ouverte. Ensuite, un processus-enfant est créé, qui hérite de pipe et toutes les propriétés du parent. Le $os.dup2()$ duplique le $fd$ d’écriture et dans $stdout$ et le ferme (le $fd$ écriture). Exécute la commande qui par la pipe est transmise vers le processus qui doit lire. Il exécute alors les mêmes étapes, mais déjà pour lecture.
+
+Le programme utilise les pipes pour transmettre la sortie d’un processus vers l’entrée de l’autre. Comme ça on peut exécuter des commandes complexes liées par des tuyaux.
+\subsection*{Gestion d’erreurs et des exceptions}
+Pour la création d’un enfant, en cas d’erreur le programme affiche un message d’erreur et et essaye encore une fois.
+
+Si l’utilisateur appelle une commande vide le système, vérifie la taille de l’entrée et quitte le processus courant.
+
+Le programme est capable de vérifier les commandes POSIX valides. Si pas valide, alors un message est affiché et sort du processus courant.
+
+Pour les redirections, si l’on veut écrire dans un fichier, mais le droit d’accès est interdit ou en général pour toute $IOError$, le processus affiche un message et tue le processus courant. 
+
+Pour la commodité de travailler avec notre shell, le programme gère l’utilisation du $Ctrl+C$ pour sortir du programme avec $KeyboardInterrupt$.
+
+\section*{Les points forts}
+Notre programme parse bien les instructions et il peut bien gérer les opéra-teurs $*$, $<$, $>$ et $|$. Il peut bien différentier si les opérateurs sont collés ou non et peut exécuter les commandes comme dans un vrai terminal. Par exemple, le
+$cat$ \textless$Makefile$ \textgreater$foo$ peut être écrit comme $cat < Makefile > foo$ ou bien comme $cat$ \textless$Makefile$\textgreater$foo$. Donc, il accepte des styles différents d’écriture de commandes. Tout cela est géré par la méthode $get\_command()$ qui retourne les commandes parsées.
+
+Le programme peut exécuter non pas de simples redirections ou pipes, mais aussi des redirections et de pipes multiples.
+
+Différents cas d’erreurs d’utilisateur ou de système sont prévenus, le programme ne s’interrompe pas et continue son travail en informant l’utilisateur à-propos de ces fautes.
+\section*{Les problèmes rencontrés}
+Le plus gros problème était de comprendre le fonctionnement des commandes POSIX, le sens des arguments et des opérateurs comme étant l’expansion d’arguments, les redirections (en principal l’opérateur $<$) et la pipe.
+
+Au début, le problème était de faire la fork correctement pour que le programme puisse exécuter une commande et après l’exécution ne se ferme pas. On a résolu cela par l’utilisation du $os.wait()$ et alors, le processus-parent est mis en attente.
+
+À cause de manque de l’expérience, on ne savait pas bien comment fonctionne la redirection, non plus la controversée fonction $os.dup2()$ du Python. On a eu finalement une surprise concernant l’opérateur $<$, auparavant on pensait qu’il ne fait rien, mais, en fait il connecte avec $stdin$. Donc, la redirection place le résultat obtenu dans un autre fichier soit dans la console.
+
+La gestion de pipes était la plus difficile. Il fallait bien comprendre le méca-nisme de fonctionnement. On ne savait pas comment mettre dans le pipe la sortie du processus et comment le lire dans un autre processus. Différentes méthodes ont été essayées, mais finalement le code était vraiment simple. La première méthode qu’on a pensé utiliser était de stocker le résultat du processus enfant dans un fichier pour qu’il soit lu ensuite par le parent, mais ceci est une différente façon de faire communiquer 2 processus, donc on a laissé tomber cette idée. La deuxième méthode était d’utiliser un objet $StringIO$ pour garder en mémoire le résultat puis le lire par la suite, mais c’était inutile parce qu’on peut utiliser la pipe pour communiquer directement. La troisième méthode qui se rapproche de la solution était d’écrire dans le pipe à travers l’objet w, ensuite le parent lis le résultat avec l’objet $r$, ce résultat sera passé comme argument à la fonction $os.exec()$, mais ceci ne donne pas le comportement normal d’un pipe, le pipe s’attend à recevoir une référence (exemple un fichier ou $sys.stdin$) qui contient les arguments et non les arguments directement et donc, au lieu de faire un $r.read()$ on a plutôt fait un $os.dup2()$ entre $r$ et $stdin$ pour connecter le lecteur des arguments avec stdin.
+
+Finalement tous les problèmes ont été résolus avec succès.
+
+\section*{Conclusion}
+Le but du travail était accompli avec succès. On a parfait nos connaissances de Python, on a appris l’utilisation des primitives de base de système d’exploitation comme $os.fork()$, $os.pipe()$, $os.wait()$, $os.dup2()$, les $stdin$, $stdout$, etc. On a aussi appris les commandes de base du standard POSIX.
+\end{document}
